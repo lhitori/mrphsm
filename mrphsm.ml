@@ -1,3 +1,10 @@
+(*
+A regarder:
+    - https://www.cse.chalmers.se/~abela/talkMcGill2012Normalization.pdf
+    - https://flaviomoura.info/files/wollic2010.pdf
+    - https://en.wikipedia.org/wiki/Occurs_check
+ *)
+
 exception TypeError of string
 
 (* Défintion inductive d'un terme *)
@@ -6,7 +13,7 @@ type terme =
   | Type of int
   | Const of string (* constante *)
   | Pi of terme * terme (* (x : A) -> B *)
-  | Lambda of terme * terme (* Lambda (x : A) . X *)
+  | Lambda of terme * terme (* Vu comme type / corps *)
   | App of terme * terme
   | Let of terme * terme * terme (* let x : A := t in u *)
 
@@ -39,7 +46,7 @@ let string_of_terme (t : terme) : string =
     | Pi (a, b) -> Printf.sprintf "(π (%s -> %s))" (s i a) (s (i + 1) b)
     | Lambda (a, b) ->
         Printf.sprintf "(λ (v%d : %s) . %s)" i (s i a) (s (i + 1) b)
-    | App (f, x) -> Printf.sprintf "(%s %s)" (s i f) (s i x)
+    | App (lhs, rhs) -> Printf.sprintf "(%s %s)" (s i lhs) (s i rhs)
     | Const n -> n
     | Let (a, t, u) ->
         Printf.sprintf "(let : %s := %s in %s)" (s i a) (s i t) (s (i + 1) u)
@@ -51,7 +58,7 @@ let rec shift (d : int) (c : int) = function
   | Var k -> if k >= c then Var (k + d) else Var k
   | Pi (a, b) -> Pi (shift d c a, shift d (c + 1) b)
   | Lambda (a, b) -> Lambda (shift d c a, shift d (c + 1) b)
-  | App (f, x) -> App (shift d c f, shift d c x)
+  | App (lhs, rhs) -> App (shift d c lhs, shift d c rhs)
   | Let (a, t, u) -> Let (shift d c a, shift d c t, shift d (c + 1) u)
   | x -> x
 
@@ -66,7 +73,7 @@ let ( </> ) (t : terme) (s : terme) =
     | Var k -> if k = i then s else if k > i then Var (k - 1) else Var k
     | Pi (a, b) -> Pi (s <~ a, shift 1 0 s <~~ b)
     | Lambda (a, b) -> Lambda (s <~ a, shift 1 0 s <~~ b)
-    | App (f, x) -> App (s <~ f, s <~ x)
+    | App (lhs, rhs) -> App (s <~ lhs, s <~ rhs)
     | Let (a, t, u) -> Let (s <~ a, s <~ t, shift 1 0 s <~~ u)
     | x -> x
   in
@@ -75,22 +82,27 @@ let ( </> ) (t : terme) (s : terme) =
 
 (* forme normale faible: https://j-hui.com/pages/normal-forms/ *)
 let rec whnf (env : env) (ctx : contexte) : terme -> terme = function
-  | App (f, a) -> (
-      match whnf env ctx f with
-      | Lambda (_, u) -> whnf env ctx (u </> a)
-      | f' -> App (f', a))
+  | App (lhs, rhs) -> (
+      match whnf env ctx lhs with
+      | Lambda (_, y) -> whnf env ctx (y </> rhs)
+      | lhs' -> App (lhs', rhs))
   | Let (_, v, u) -> whnf env ctx (u </> v)
   | x -> x
 
+(* alpha-equivalence: https://inria.hal.science/hal-01354360/file/RR-LIG-013.pdf *)
 let alpha_equiv (env : env) (ctx : contexte) (t : terme) (u : terme) =
-  let rec aux (ctx : contexte) (t : terme) =
+  let rec aux (ctx : contexte) (t : terme) : terme =
     match whnf env ctx t with
-    | App (f, a) -> App (aux ctx f, aux ctx a)
+    | App (f, x) -> App (aux ctx f, aux ctx x)
     | Pi (a, b) -> Pi (aux ctx a, aux (Locale ("_", a) :: ctx) b)
-    | Lambda (x, y) -> Lambda (aux ctx x, aux (Locale ("_", x) :: ctx) y)
+    | Lambda (a, b) -> Lambda (aux ctx a, aux (Locale ("_", b) :: ctx) b)
     | x -> x
   in
   aux ctx t = aux ctx u
+
+let unwrap : string option -> unit = function
+  | Some err -> failwith err
+  | None -> ()
 
 let rec inferer (env : env) (ctx : contexte) : terme -> terme = function
   | Type k -> Type (k + 1)
@@ -110,7 +122,7 @@ let rec inferer (env : env) (ctx : contexte) : terme -> terme = function
       let f_t = inferer env ctx f in
       match whnf env ctx f_t with
       | Pi (arg_t, res_t) ->
-          check env ctx a arg_t;
+          unwrap (check env ctx arg_t a);
           res_t </> a
       | other ->
           raise
@@ -119,99 +131,62 @@ let rec inferer (env : env) (ctx : contexte) : terme -> terme = function
                   (string_of_terme other))))
   | Lambda (ann, body) -> raise (TypeError "Pas d'annotation")
   | Pi (a, b) ->
-      check env ctx a (Type 0);
-      check env (ajoute_locale ctx "_" a) b (Type 0);
+      unwrap (check env ctx (Type 0) a);
+      unwrap (check env (ajoute_locale ctx "_" a) (Type 0) b);
       Type 0
-  | Let (ty, v, body) ->
-      check env ctx v ty;
-      inferer env (ajoute_def ctx "_" ty v) body
+  | Let (v_t, v, body) ->
+      unwrap (check env ctx v_t v);
+      inferer env (ajoute_def ctx "_" v_t v) body
 
-and check (env : env) (ctx : contexte) (t : terme) (expected : terme) : unit =
-  let ( === ) = fun x y -> alpha_equiv env ctx x y in
-  match t with
+and check (env : env) (ctx : contexte) (expected : terme) :
+    terme -> string option =
+  let ( <~> ) = fun x y -> alpha_equiv env ctx x y in
+  function
   | Lambda (ann, body) -> (
       match whnf env ctx expected with
-      | Pi (arg_ty, res_ty) ->
-          if not (ann === arg_ty) then
-            raise (TypeError "Le type diffère de l'annotation ");
-          check env (Locale ("_", arg_ty) :: ctx) body res_ty
-      | _ -> raise (TypeError "On voulait une fonction"))
-  | _ ->
-      let t_ty = inferer env ctx t in
-      if not (t_ty === expected) then
-        raise
-          (TypeError
-             (Printf.sprintf "On a %s mais on voulait %s" (string_of_terme t_ty)
-                (string_of_terme expected)))
+      | Pi (arg_t, res_t) ->
+          if not (ann <~> arg_t) then Some "Le type diffère de l'annotation"
+          else check env (Locale ("_", arg_t) :: ctx) res_t body
+      | _ -> Some "On voulait une fonction")
+  | u ->
+      let u_t = inferer env ctx u in
+      if not (u_t <~> expected) then
+        Some
+          (Printf.sprintf "On a %s mais on voulait %s" (string_of_terme u_t)
+             (string_of_terme expected))
+      else None
 
-and ( <?> ) = fun x y -> check [] [] x y
+and ( |~ ) = fun x y -> check [] [] y x
 
 let demo1 () =
   print_endline "Démonstration (A -> A)";
-  let t_A = Type 0 in
 
   (* Construction du type : A -> A ainsi que du lambda terme *)
-  let tpe = Pi (t_A, t_A) in
-  let trm = Lambda (t_A, Var 0) in
+  let preuve = Pi (Type 0, Type 0) in
+  let lambda = Lambda (Type 0, Var 0) in
 
-  (* On vérifie que id_terme prouve bien id_type *)
-  match check [] [] trm tpe with
-  | () ->
-      Printf.printf "  Termes .: %s\n  Type ...: %s\n  C/C ....: OK\n"
-        (string_of_terme trm) (string_of_terme tpe)
-  | exception TypeError msg -> Printf.printf "  ERREUR: %s\n" msg
+  match lambda |~ preuve with
+  | None ->
+      Printf.printf "  Termes ...: %s\n  Type .....: %s\n  C/C ......: OK\n"
+        (string_of_terme lambda) (string_of_terme preuve)
+  | Some msg -> Printf.printf "  Erreur: %s\n" msg
 
 let demo2 () =
-  print_endline "Démonstration (A -> B -> A) : fonction constante";
   let t_A = Type 0 in
-  let t_B = Type 0 in
-  let tpe = Pi (t_A, Pi (t_B, t_A)) in
-  let trm = Lambda (t_A, Lambda (t_B, Var 1)) in
-  match trm <?> tpe with
-  | () ->
-      Printf.printf "  Termes .: %s\n  Type ...: %s\n  C/C ....: OK\n"
-        (string_of_terme trm) (string_of_terme tpe)
-  | exception TypeError msg -> Printf.printf "  ERREUR: %s\n" msg
 
-let demo3 () =
-  print_endline "Démonstration ((A -> B) -> (B -> C) -> (A -> C)) : composition";
-  let t_A = Type 0 in
-  let t_B = Type 0 in
-  let t_C = Type 0 in
-  let tpe = Pi (Pi (t_A, t_B), Pi (Pi (t_B, t_C), Pi (t_A, t_C))) in
-  let trm =
-    Lambda
-      ( Pi (t_A, t_B),
-        Lambda (Pi (t_B, t_C), Lambda (t_A, App (Var 1, App (Var 2, Var 0)))) )
-  in
-  match trm <?> tpe with
-  | () ->
-      Printf.printf "  Termes .: %s\n  Type ...: %s\n  C/C ....: OK\n"
-        (string_of_terme trm) (string_of_terme tpe)
-  | exception TypeError msg -> Printf.printf "  %s\n" msg
+  (* id = λ (x : A) . x *)
+  let id_t = Lambda (t_A, Var 0) in
 
-let demo4 () =
-  print_endline "Démonstration avec erreur attendue";
-  let t_A = Type 0 in
-  let t_B = Type 1 in
-  (* Mauvais type : prétend retourner A, mais retourne argument de type B *)
-  let tpe = Pi (t_B, t_A) in
-  let trm = Lambda (t_B, Var 0) in
-  match trm <?> tpe with
-  | () -> Printf.printf "  gros probleme\n"
-  | exception TypeError msg -> Printf.printf "  rejet avec message: %s\n" msg
+  (* let id : A -> A := id_t in id A *)
+  let def = Let (Pi (t_A, t_A), id_t, App (Var 0, t_A)) in
 
-let demo5 () =
-  print_endline "Démonstration : application ( (λ (x:A). x) A )";
-
-  let app = App (Lambda (Type 0, Var 0), Type 0) in
-  match inferer [] [] app with
+  match inferer [] [] def with
   | ty ->
-      Printf.printf "  Terme .: %s\n  WHNF ..: %s\n  Type ..: %s\n"
-        (string_of_terme app)
-        (string_of_terme (whnf [] [] app))
-        (string_of_terme ty)
-  | exception TypeError msg -> Printf.printf "  ERREUR: %s\n" msg
+      Printf.printf "  Terme ....: %s\n" (string_of_terme def);
+      Printf.printf "  WHNF .....: %s\n" (string_of_terme (whnf [] [] def));
+      Printf.printf "  Type .....: %s\n" (string_of_terme ty);
+      print_endline "  C/C ......: OK"
+  | exception TypeError msg -> Printf.printf "  erreur: %s\n" msg
 
 let () =
   while true do
@@ -221,8 +196,6 @@ let () =
     match String.trim l with
     | "demo1" -> demo1 ()
     | "demo2" -> demo2 ()
-    | "demo3" -> demo3 ()
-    | "demo4" -> demo4 ()
-    | "demo5" -> demo5 ()
+    (* TODO: autres tests *)
     | _ -> ()
   done
