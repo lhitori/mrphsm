@@ -45,20 +45,13 @@ Pour tout $(s, t)\in\mathcal{R}$, on dit que *s est en relation avec t* et on no
 
 :::
 
-::: {.box .def title="Définition 2."}
-
-On définit une relation $\mathcal{R}_\alpha$ sur l'ensemble $\Lambda$ par:
-$$\lambda x.\ u\ \mathcal{R}_\alpha\ \lambda y.\ u[x\leftarrow y] \iff x \neq y \textit{ et  x, y ne sont pas liées à u}$$
-:::
-
 ::: {.box .def title="Définition 3. $\alpha$-équivalence"}
 
-On définit $\equiv_\alpha$ la plus petite relation qui contient $\mathcal{R_\alpha}$ et telle que:
+On définit l'$\alpha$-équivalence par induction:
 
-(i) $\equiv_\alpha$ est conservée par multiplication à gauche/droite par un élement de $\Lambda$
-(ii) $\equiv_\alpha$ est conservée par passage à la $\lambda$-abstraction, i.e.
-
-$$\forall (s, t)\in\Lambda^2,\ s\equiv_\alpha t \implies \lambda x.\ u\ \equiv_\alpha\ \lambda x.\ v$$
+(i) $\forall x\in\Lambda,\ x \equiv_\alpha x$
+(ii) $\forall (s,t), (u,v)\in\Lambda^2,\ (s\ u)\equiv_\alpha (t\ v) \iff s \equiv_\alpha t\textit{ et }u\equiv_\alpha v$
+(iii) Pour tous $s,t\in\Lambda$ avec $s \equiv \lambda x.\ X$ et $t \equiv \lambda y.\ Y$, on a $s\equiv_\alpha t$ si, et seulement si, il existe $z$ qui n'apparait ni dans $X$ ni dans $Y$ telle que $X[x\rightarrow z] \equiv_\alpha Y[y\rightarrow z]$
 
 :::
 
