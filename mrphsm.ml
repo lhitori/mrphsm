@@ -1,10 +1,3 @@
-(*
-A regarder:
-    - https://www.cse.chalmers.se/~abela/talkMcGill2012Normalization.pdf
-    - https://flaviomoura.info/files/wollic2010.pdf
-    - https://en.wikipedia.org/wiki/Occurs_check
- *)
-
 exception TypeError of string
 
 (* Défintion inductive d'un terme *)
@@ -59,7 +52,7 @@ let ( </> ) (t : terme) (s : terme) =
   in
   shift 1 0 s |> aux t 0 |> shift (-1) 0
 
-(* forme normale faible: https://j-hui.com/pages/normal-forms/ *)
+(* Forme normale faible: https://j-hui.com/pages/normal-forms/ *)
 let rec whnf (env : env) (ctx : contexte) : terme -> terme = function
   | App (lhs, rhs) -> (
       match whnf env ctx lhs with
