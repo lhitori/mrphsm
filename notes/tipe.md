@@ -18,7 +18,7 @@ Soit $\mathcal{V}$ un ensemble de variables.
 On définit l'ensemble $\Lambda$ par induction:
 
 (i) $\forall v\in\mathcal{V},\ v\in\Lambda$
-(ii) $\forall (x, s)\in\mathcal{V}\times\Lambda,\ (\lambda x\ .\ s)\in\Lambda$ *($\lambda$-abstraction)*
+(ii) $\forall (x, s)\in\mathcal{V}\times\Lambda,\ (\lambda x.\ s)\in\Lambda$ *($\lambda$-abstraction)*
 (iii) $\forall (s, t)\in\Lambda^2,\ (s\ t) \in\Lambda$ *(application)*
 
 \
@@ -28,7 +28,7 @@ Les élements de $\Lambda$ sont appelés *$\lambda$-termes*.
 
 ::: {.box .rem title="Remarques."}
 
-La notation $\lambda x\ .\ X$ (ii) est l'équivalent en langage mathématiques de $x\mapsto X$ avec $X$ qui dépend de $x$
+La notation $\lambda x.\ X$ (ii) est l'équivalent en langage mathématiques de $x\mapsto X$ avec $X$ qui dépend de $x$
 \
 
 La notation $(s\ t)$ (iii) correspond à la composition de $s$ par $t$
